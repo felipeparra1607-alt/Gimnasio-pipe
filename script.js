@@ -24,6 +24,7 @@ const state = {
   editingDayId: null,
   editingExercise: null,
   routineView: { screen: "list", dayId: null, addMode: null },
+  progressView: { screen: "groups", group: null, exerciseKey: null },
   catalogPicker: null,
   exerciseDrafts: {},
 };
@@ -40,6 +41,30 @@ const sectionTitles = {
   train: "Entrenar",
   progress: "Progreso",
   profile: "Perfil",
+};
+
+const PROGRESS_GROUPS = ["Pecho", "Espalda", "Bíceps", "Tríceps", "Hombro", "Pierna", "Glúteo", "Abdomen", "Antebrazo", "Otros"];
+
+const MUSCLE_GROUP_ALIASES = {
+  pecho: "Pecho",
+  espalda: "Espalda",
+  biceps: "Bíceps",
+  bíceps: "Bíceps",
+  triceps: "Tríceps",
+  tríceps: "Tríceps",
+  hombro: "Hombro",
+  hombros: "Hombro",
+  pierna: "Pierna",
+  piernas: "Pierna",
+  gluteo: "Glúteo",
+  glúteo: "Glúteo",
+  gluteos: "Glúteo",
+  glúteos: "Glúteo",
+  abdomen: "Abdomen",
+  abdominales: "Abdomen",
+  core: "Abdomen",
+  antebrazo: "Antebrazo",
+  antebrazos: "Antebrazo",
 };
 
 const EXERCISE_CATALOG = {
@@ -330,6 +355,16 @@ function setRoutineView(screen, options = {}) {
     addMode: options.addMode ?? null,
   };
   if (screen !== "catalog") state.catalogPicker = null;
+  render();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function setProgressView(screen, options = {}) {
+  state.progressView = {
+    screen,
+    group: options.group ?? null,
+    exerciseKey: options.exerciseKey ?? null,
+  };
   render();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -725,87 +760,191 @@ function renderExerciseLogger(exercise) {
 }
 
 function renderProgress() {
-  const exercises = getAllExercises();
-  const selectedId = document.querySelector("[name='progressExercise']")?.value || exercises[0]?.id || "";
-  const selected = exercises.find((exercise) => exercise.id === selectedId) || exercises[0];
-  const progress = selected ? getExerciseProgress(selected.id) : null;
+  const summary = getProgressSummary();
+  const { screen, group, exerciseKey } = state.progressView;
+
+  if (!summary.totalSessions) return renderProgressEmpty();
+  if (screen === "group") return renderProgressGroup(group, summary);
+  if (screen === "exercise") return renderProgressExercise(group, exerciseKey, summary);
+  return renderProgressGroups(summary);
+}
+
+function renderProgressEmpty() {
+  return `
+    <section class="empty-state">
+      <div>
+        <div class="empty-icon" aria-hidden="true">📈</div>
+        <h2>Todavía no tienes entrenamientos registrados</h2>
+        <p>Cuando guardes tus entrenamientos, podrás ver tu progreso aquí.</p>
+      </div>
+    </section>
+  `;
+}
+
+function renderProgressGroups(summary) {
   return `
     <section class="card form-card">
       <span class="chip">Progreso</span>
-      <h2>Analiza un ejercicio</h2>
-      ${exercises.length ? `
-        <div class="field">
-          <label>Seleccionar ejercicio</label>
-          <select name="progressExercise" data-action="select-progress-exercise">
-            ${exercises.map((exercise) => `<option value="${exercise.id}" ${exercise.id === selected?.id ? "selected" : ""}>${escapeHTML(exercise.name)} · Día ${escapeHTML(exercise.dayNumber)}</option>`).join("")}
-          </select>
-        </div>
-      ` : ""}
+      <h2>Elige un grupo muscular</h2>
+      <p>Progreso se basa solo en entrenamientos guardados. Los ejercicios sin sesiones registradas no aparecen.</p>
     </section>
-    ${selected && progress ? renderProgressDetail(selected, progress) : renderEmpty("📈", "Sin ejercicios", "Añade ejercicios en Rutina y registra entrenamientos para ver estadísticas.")}
+    <section class="progress-grid">
+      ${PROGRESS_GROUPS.map((group) => {
+        const count = summary.groups[group]?.exercises.length || 0;
+        return `
+          <button class="progress-card" type="button" data-action="progress-open-group" data-group="${escapeHTML(group)}">
+            <strong>${escapeHTML(group)}</strong>
+            <span>${count ? `${count} ${count === 1 ? "ejercicio registrado" : "ejercicios registrados"}` : "Sin registros todavía"}</span>
+          </button>
+        `;
+      }).join("")}
+    </section>
   `;
 }
 
-function getAllExercises() {
-  return sortedRoutineDays().flatMap((day) => day.exercises.map((exercise) => ({ ...exercise, dayNumber: day.dayNumber, dayName: day.name })));
+function renderProgressGroup(group, summary) {
+  const safeGroup = PROGRESS_GROUPS.includes(group) ? group : "Otros";
+  const exercises = summary.groups[safeGroup]?.exercises || [];
+  return `
+    <section class="screen-stack">
+      <button class="btn btn-ghost" type="button" data-action="progress-back-groups">← Progreso</button>
+      <section class="hero-card progress-hero">
+        <span class="chip">Grupo muscular</span>
+        <h2 class="hero-title">${escapeHTML(safeGroup)}</h2>
+        <p>${exercises.length ? `${exercises.length} ${exercises.length === 1 ? "ejercicio registrado" : "ejercicios registrados"}` : `Todavía no hay entrenamientos registrados para ${escapeHTML(safeGroup)}`}</p>
+      </section>
+      ${exercises.length ? `
+        <section class="grid">
+          <h2>Ejercicios registrados</h2>
+          ${exercises.map((exercise) => `
+            <button class="progress-card" type="button" data-action="progress-open-exercise" data-group="${escapeHTML(safeGroup)}" data-exercise-key="${escapeHTML(exercise.key)}">
+              <strong>${escapeHTML(exercise.name)}</strong>
+              <span>${exercise.entries.length} ${exercise.entries.length === 1 ? "sesión" : "sesiones"} · último ${formatDate(exercise.last.date)}</span>
+            </button>
+          `).join("")}
+        </section>
+      ` : renderInlineEmpty("Todavía no hay entrenamientos registrados para este grupo")}
+    </section>
+  `;
 }
 
-function getExerciseProgress(exerciseId) {
-  const entries = state.data.workouts
-    .map((workout) => {
-      const exercise = workout.exercises.find((item) => item.exerciseId === exerciseId);
-      if (!exercise || !exercise.sets.length) return null;
-      const weights = exercise.sets.map((set) => Number(set.weight));
-      const reps = exercise.sets.map((set) => Number(set.reps));
-      return {
-        date: workout.date,
-        dayName: workout.dayName,
-        maxWeight: Math.max(...weights),
-        maxReps: Math.max(...reps),
-        setCount: exercise.sets.length,
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.date.localeCompare(b.date));
+function renderProgressExercise(group, exerciseKey, summary) {
+  const safeGroup = PROGRESS_GROUPS.includes(group) ? group : "Otros";
+  const exercise = summary.exerciseMap.get(exerciseKey);
+  if (!exercise) return renderProgressGroup(safeGroup, summary);
+  const progress = getExerciseProgressFromEntries(exercise.entries);
+  return `
+    <section class="screen-stack">
+      <button class="btn btn-ghost" type="button" data-action="progress-back-group" data-group="${escapeHTML(safeGroup)}">← ${escapeHTML(safeGroup)}</button>
+      <section class="hero-card progress-hero">
+        <span class="chip">${escapeHTML(safeGroup)}</span>
+        <h2 class="hero-title">${escapeHTML(exercise.name)}</h2>
+        <p>${progress.entries.length} ${progress.entries.length === 1 ? "sesión registrada" : "sesiones registradas"}</p>
+      </section>
+      <section class="stats-grid">
+        ${statCard("Último peso", `${progress.last.maxWeight} kg`, "máximo de la última sesión")}
+        ${statCard("Mejor peso", `${progress.bestWeight} kg`, exercise.name)}
+        ${statCard("Reps con mejor peso", progress.repsWithBestWeight, `${progress.bestWeight} kg`)}
+        ${statCard("Veces entrenado", `${progress.entries.length} ${progress.entries.length === 1 ? "vez" : "veces"}`, "sesiones diferentes")}
+        ${statCard("Último día", progress.last.dayName, formatDate(progress.last.date))}
+        ${statCard("Evolución", progress.evolutionLabel, "vs. sesión anterior")}
+      </section>
+      <section class="card grid">
+        <h2>Historial</h2>
+        ${progress.entries.slice().reverse().map((entry) => `
+          <article class="history-item">
+            <h3>${formatDate(entry.date)}</h3>
+            <p>${escapeHTML(entry.dayName)}</p>
+            <div class="exercise-meta">
+              <span class="pill accent">Peso máximo: ${entry.maxWeight} kg</span>
+              <span class="pill">Reps con ese peso: ${entry.repsAtMax}</span>
+              <span class="pill">Series: ${entry.setCount}</span>
+            </div>
+          </article>
+        `).join("")}
+      </section>
+    </section>
+  `;
+}
 
-  if (!entries.length) return { entries: [] };
+function getProgressSummary() {
+  const groups = Object.fromEntries(PROGRESS_GROUPS.map((group) => [group, { exercises: [] }]));
+  const exerciseMap = new Map();
+  let totalSessions = 0;
+
+  state.data.workouts.forEach((workout, workoutIndex) => {
+    if (!Array.isArray(workout.exercises)) return;
+    workout.exercises.forEach((exercise) => {
+      if (!Array.isArray(exercise.sets) || !exercise.sets.length) return;
+      const sets = exercise.sets
+        .map((set) => ({ weight: Number(set.weight), reps: Number(set.reps) }))
+        .filter((set) => !Number.isNaN(set.weight) && !Number.isNaN(set.reps));
+      if (!sets.length) return;
+
+      const maxWeight = Math.max(...sets.map((set) => set.weight));
+      const repsAtMax = Math.max(...sets.filter((set) => set.weight === maxWeight).map((set) => set.reps));
+      const routineExercise = findRoutineExercise(exercise.exerciseId, exercise.name);
+      const muscleGroup = normalizeMuscleGroup(exercise.muscleGroup || routineExercise?.muscleGroup);
+      const key = exercise.exerciseId || `${normalizeText(exercise.name)}-${muscleGroup}`;
+      const entry = {
+        date: workout.date || "",
+        dayName: workout.dayName || `Día ${workout.dayNumber || ""}`.trim(),
+        maxWeight,
+        repsAtMax,
+        setCount: sets.length,
+        workoutIndex,
+      };
+
+      if (!exerciseMap.has(key)) {
+        exerciseMap.set(key, {
+          key,
+          name: exercise.name || routineExercise?.name || "Ejercicio sin nombre",
+          muscleGroup,
+          entries: [],
+        });
+      }
+      exerciseMap.get(key).entries.push(entry);
+      totalSessions += 1;
+    });
+  });
+
+  exerciseMap.forEach((exercise) => {
+    exercise.entries.sort((a, b) => a.date.localeCompare(b.date) || a.workoutIndex - b.workoutIndex);
+    exercise.last = exercise.entries.at(-1);
+    groups[exercise.muscleGroup].exercises.push(exercise);
+  });
+
+  PROGRESS_GROUPS.forEach((group) => {
+    groups[group].exercises.sort((a, b) => a.name.localeCompare(b.name, "es"));
+  });
+
+  return { groups, exerciseMap, totalSessions };
+}
+
+function normalizeMuscleGroup(value = "") {
+  const normalized = normalizeText(value);
+  return MUSCLE_GROUP_ALIASES[normalized] || "Otros";
+}
+
+function normalizeText(value = "") {
+  return String(value).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function findRoutineExercise(exerciseId, exerciseName) {
+  const allExercises = state.data.routineDays.flatMap((day) => day.exercises || []);
+  return allExercises.find((exercise) => exercise.id === exerciseId)
+    || allExercises.find((exercise) => normalizeText(exercise.name) === normalizeText(exerciseName))
+    || null;
+}
+
+function getExerciseProgressFromEntries(entries) {
   const last = entries.at(-1);
   const previous = entries.at(-2);
   const bestWeight = Math.max(...entries.map((entry) => entry.maxWeight));
-  const bestReps = Math.max(...entries.map((entry) => entry.maxReps));
+  const repsWithBestWeight = Math.max(...entries.filter((entry) => entry.maxWeight === bestWeight).map((entry) => entry.repsAtMax));
   const evolution = previous ? last.maxWeight - previous.maxWeight : null;
-  return { entries, last, previous, bestWeight, bestReps, evolution };
-}
-
-function renderProgressDetail(exercise, progress) {
-  if (!progress.entries.length) {
-    return renderEmpty("📈", exercise.name, "Todavía no hay entrenamientos registrados para este ejercicio.");
-  }
-  const evolutionLabel = progress.evolution === null ? "Sin datos previos" : progress.evolution === 0 ? "Sin cambios" : `${progress.evolution > 0 ? "+" : ""}${progress.evolution} kg`;
-  return `
-    <section class="stats-grid">
-      ${statCard("Último peso", `${progress.last.maxWeight} kg`, formatDate(progress.last.date))}
-      ${statCard("Mejor peso", `${progress.bestWeight} kg`, exercise.name)}
-      ${statCard("Mejores reps", progress.bestReps, "en una serie")}
-      ${statCard("Veces entrenado", progress.entries.length, "sesiones registradas")}
-      ${statCard("Evolución", evolutionLabel, "vs. entrenamiento anterior")}
-      ${statCard("Último día", progress.last.dayName, formatDate(progress.last.date))}
-    </section>
-    <section class="card grid">
-      <h2>Historial</h2>
-      ${progress.entries.slice().reverse().map((entry) => `
-        <article class="history-item">
-          <h3>${formatDate(entry.date)}</h3>
-          <p>${escapeHTML(entry.dayName)}</p>
-          <div class="exercise-meta">
-            <span class="pill accent">${entry.maxWeight} kg máx.</span>
-            <span class="pill">${entry.maxReps} reps máx.</span>
-            <span class="pill">${entry.setCount} series</span>
-          </div>
-        </article>
-      `).join("")}
-    </section>
-  `;
+  const evolutionLabel = evolution === null ? "Sin datos suficientes" : evolution === 0 ? "Sin cambios" : `${evolution > 0 ? "+" : ""}${evolution} kg`;
+  return { entries, last, previous, bestWeight, repsWithBestWeight, evolutionLabel };
 }
 
 function renderProfile() {
@@ -984,6 +1123,10 @@ async function handleClick(event) {
   if (action === "catalog-back") return goBackInCatalog(target.dataset.dayId);
   if (action === "delete-day") return deleteDay(target.dataset.dayId);
   if (action === "delete-exercise") return deleteExercise(target.dataset.dayId, target.dataset.exerciseId);
+  if (action === "progress-open-group") return setProgressView("group", { group: target.dataset.group });
+  if (action === "progress-back-groups") return setProgressView("groups");
+  if (action === "progress-open-exercise") return setProgressView("exercise", { group: target.dataset.group, exerciseKey: target.dataset.exerciseKey });
+  if (action === "progress-back-group") return setProgressView("group", { group: target.dataset.group });
   if (action === "select-train-day") { state.selectedTrainingDayId = target.dataset.dayId; return render(); }
   if (action === "begin-workout") return beginWorkout(target.dataset.dayId);
   if (action === "open-exercise-logger") { state.activeExerciseId = target.dataset.exerciseId; return render(); }
@@ -1062,22 +1205,15 @@ async function wipeData() {
   state.editingDayId = null;
   state.editingExercise = null;
   state.routineView = { screen: "list", dayId: null, addMode: null };
+  state.progressView = { screen: "groups", group: null, exerciseKey: null };
   state.catalogPicker = null;
   state.exerciseDrafts = {};
   showToast("Datos borrados.");
   navigate("home");
 }
 
-function handleChange(event) {
-  if (event.target.matches("[data-action='select-progress-exercise']")) renderProgressSelection(event.target.value);
-}
-
-function renderProgressSelection(exerciseId) {
-  const exercises = getAllExercises();
-  const selected = exercises.find((exercise) => exercise.id === exerciseId);
-  const progress = selected ? getExerciseProgress(selected.id) : null;
-  const topCard = app.querySelector(".card.form-card");
-  app.innerHTML = topCard.outerHTML + (selected && progress ? renderProgressDetail(selected, progress) : "");
+function handleChange() {
+  // Reserved for future form controls that need live updates.
 }
 
 document.querySelectorAll(".nav-item").forEach((button) => {
