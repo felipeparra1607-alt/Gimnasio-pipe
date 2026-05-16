@@ -332,44 +332,6 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); box-sha
   align-content: center;
 }
 
-.mode-switch {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-  padding: 6px;
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.035);
-}
-
-.mode-option {
-  min-height: 50px;
-  padding: 12px 14px;
-  border: 1px solid transparent;
-  border-radius: 17px;
-  background: transparent;
-  color: var(--muted);
-  font-weight: 850;
-}
-
-.mode-option.active {
-  border-color: var(--line-strong);
-  background: rgba(198, 255, 48, 0.12);
-  color: var(--accent);
-}
-
-.catalog-panel {
-  display: grid;
-  gap: 14px;
-  padding: 15px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-xl);
-  background: linear-gradient(145deg, rgba(198, 255, 48, 0.08), rgba(255, 255, 255, 0.035));
-}
-
-.catalog-panel h3 { margin: 8px 0 4px; }
-.catalog-panel p { margin-bottom: 0; }
-
 .catalog-grid {
   display: grid;
   gap: 10px;
@@ -432,6 +394,77 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 @media (min-width: 480px) {
-  .mode-switch { grid-template-columns: 1fr 1fr; }
   .catalog-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.screen-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.routine-day-card,
+.choice-card {
+  min-height: 118px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(145deg, rgba(23, 31, 45, 0.96), rgba(14, 19, 28, 0.96));
+  color: var(--text);
+  text-align: left;
+  box-shadow: var(--shadow);
+}
+
+.routine-day-card h2,
+.choice-card strong {
+  margin: 4px 0 6px;
+  font-size: 1.28rem;
+  letter-spacing: -0.04em;
+}
+
+.routine-day-card p,
+.choice-card span {
+  margin: 0;
+  color: var(--muted);
+}
+
+.routine-day-card > span {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-weight: 900;
+}
+
+.choice-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.choice-card {
+  display: grid;
+  justify-content: stretch;
+  min-height: 104px;
+}
+
+.routine-detail-hero,
+.catalog-hero {
+  min-height: 150px;
+}
+
+.compact-empty {
+  min-height: 44vh;
+}
+
+.catalog-screen .catalog-grid {
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 520px) {
+  .choice-grid,
+  .catalog-screen .catalog-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

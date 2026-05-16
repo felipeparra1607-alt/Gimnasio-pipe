@@ -23,6 +23,7 @@ const state = {
   activeExerciseId: null,
   editingDayId: null,
   editingExercise: null,
+  routineView: { screen: "list", dayId: null, addMode: null },
   catalogPicker: null,
   exerciseDrafts: {},
 };
@@ -322,31 +323,105 @@ function buildCatalogExercise(group, subgroup, exerciseName) {
   };
 }
 
+function setRoutineView(screen, options = {}) {
+  state.routineView = {
+    screen,
+    dayId: options.dayId ?? null,
+    addMode: options.addMode ?? null,
+  };
+  if (screen !== "catalog") state.catalogPicker = null;
+  render();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function getRoutineDay(dayId) {
+  return state.data.routineDays.find((day) => day.id === dayId) || null;
+}
+
 function renderRoutine() {
-  const nextNumber = getNextDayNumber();
-  const editDay = state.data.routineDays.find((day) => day.id === state.editingDayId);
+  const { screen, dayId } = state.routineView;
+  const day = dayId ? getRoutineDay(dayId) : null;
+
+  if ((screen === "detail" || screen === "add" || screen === "catalog") && !day) {
+    state.routineView = { screen: "list", dayId: null, addMode: null };
+    return renderRoutineList();
+  }
+
+  if (screen === "create") return renderDayEditor();
+  if (screen === "detail") return renderDayDetail(day);
+  if (screen === "add") return renderAddExerciseScreen(day);
+  if (screen === "catalog") return renderCatalogScreen(day);
+  return renderRoutineList();
+}
+
+function renderRoutineList() {
+  const days = sortedRoutineDays();
   return `
     <section class="card form-card">
       <div>
         <span class="chip">Rutina personalizada</span>
-        <h2>${editDay ? "Editar día" : "Crear día de entrenamiento"}</h2>
-        <p>Crea tus propios días y añade ejercicios. La app empieza vacía, sin ejercicios predeterminados.</p>
+        <h2>Tu rutina</h2>
+        <p>Solo aparecen los días que tú has creado. La app no incluye ninguna rutina predeterminada.</p>
       </div>
-      <form data-form="day" class="form-grid">
-        <input type="hidden" name="id" value="${escapeHTML(editDay?.id || "")}" />
-        <div class="field">
-          <label for="dayNumber">Número de día</label>
-          <input id="dayNumber" name="dayNumber" type="number" min="1" required value="${escapeHTML(editDay?.dayNumber || nextNumber)}" />
-        </div>
-        <div class="field">
-          <label for="dayName">Nombre del día</label>
-          <input id="dayName" name="name" type="text" placeholder="Pecho y tríceps" required value="${escapeHTML(editDay?.name || "")}" />
-        </div>
-        <button class="btn btn-primary full" type="submit">${editDay ? "Guardar cambios" : "Crear día"}</button>
-        ${editDay ? `<button class="btn btn-ghost full" type="button" data-action="cancel-edit-day">Cancelar edición</button>` : ""}
-      </form>
+      <button class="btn btn-primary" type="button" data-action="create-day-screen">Crear día</button>
     </section>
-    ${sortedRoutineDays().length ? sortedRoutineDays().map(renderDayCard).join("") : renderEmpty("📋", "Sin días creados", "Crea tu primer día para empezar a construir tu rutina.")}
+    ${days.length ? `
+      <section class="grid">
+        ${days.map(renderRoutineDayCard).join("")}
+      </section>
+    ` : `
+      <section class="empty-state compact-empty">
+        <div>
+          <div class="empty-icon" aria-hidden="true">📋</div>
+          <h2>Todavía no has creado tu rutina</h2>
+          <p>Crea tu primer día de entrenamiento para empezar</p>
+          <button class="btn btn-primary" type="button" data-action="create-day-screen">Crear día</button>
+        </div>
+      </section>
+    `}
+  `;
+}
+
+function renderRoutineDayCard(day) {
+  return `
+    <button class="routine-day-card" type="button" data-action="open-routine-day" data-day-id="${day.id}">
+      <div>
+        <p class="tiny">Día ${escapeHTML(day.dayNumber)}</p>
+        <h2>${escapeHTML(day.name)}</h2>
+        <p>${day.exercises.length} ${day.exercises.length === 1 ? "ejercicio" : "ejercicios"}</p>
+      </div>
+      <span>Ver día →</span>
+    </button>
+  `;
+}
+
+function renderDayEditor() {
+  const editDay = state.data.routineDays.find((day) => day.id === state.editingDayId);
+  const nextNumber = getNextDayNumber();
+  return `
+    <section class="screen-stack">
+      <button class="btn btn-ghost" type="button" data-action="back-to-routine">← Rutina</button>
+      <section class="card form-card">
+        <div>
+          <span class="chip">${editDay ? "Editar día" : "Nuevo día"}</span>
+          <h2>${editDay ? "Editar nombre del día" : "Crear día de entrenamiento"}</h2>
+          <p>El número se propone automáticamente, pero puedes ajustarlo si organizas tu rutina de otra forma.</p>
+        </div>
+        <form data-form="day" class="form-grid">
+          <input type="hidden" name="id" value="${escapeHTML(editDay?.id || "")}" />
+          <div class="field">
+            <label for="dayNumber">Número de día</label>
+            <input id="dayNumber" name="dayNumber" type="number" min="1" required value="${escapeHTML(editDay?.dayNumber || nextNumber)}" />
+          </div>
+          <div class="field">
+            <label for="dayName">Nombre del día</label>
+            <input id="dayName" name="name" type="text" placeholder="Pecho y tríceps" required value="${escapeHTML(editDay?.name || "")}" />
+          </div>
+          <button class="btn btn-primary full" type="submit">${editDay ? "Guardar cambios" : "Crear día"}</button>
+          ${editDay ? `<button class="btn btn-ghost full" type="button" data-action="cancel-edit-day">Cancelar edición</button>` : ""}
+        </form>
+      </section>
+    </section>
   `;
 }
 
@@ -355,26 +430,54 @@ function getNextDayNumber() {
   return numbers.length ? Math.max(...numbers) + 1 : 1;
 }
 
-function renderDayCard(day) {
+function renderDayDetail(day) {
+  const editingDay = state.editingDayId === day.id;
   return `
-    <details class="day-card" open>
-      <summary>
-        <div>
-          <p class="tiny">Día ${escapeHTML(day.dayNumber)}</p>
-          <h2 class="day-title">${escapeHTML(day.name)}</h2>
-          <p class="tiny">${day.exercises.length} ejercicios</p>
-        </div>
-        <span class="pill accent">Abrir</span>
-      </summary>
-      <div class="day-content">
-        <div class="action-row">
-          <button class="btn btn-secondary btn-small" type="button" data-action="edit-day" data-day-id="${day.id}">Editar día</button>
-          <button class="btn btn-danger btn-small" type="button" data-action="delete-day" data-day-id="${day.id}">Eliminar día</button>
-        </div>
-        ${day.exercises.length ? day.exercises.map((exercise) => renderExerciseCard(day, exercise)).join("") : renderInlineEmpty("Aún no hay ejercicios en este día.")}
-        ${renderExerciseForm(day)}
+    <section class="screen-stack">
+      <button class="btn btn-ghost" type="button" data-action="back-to-routine">← Rutina</button>
+      <section class="hero-card routine-detail-hero">
+        <span class="chip">Día ${escapeHTML(day.dayNumber)}</span>
+        <h2 class="hero-title">${escapeHTML(day.name)}</h2>
+        <p>${day.exercises.length} ${day.exercises.length === 1 ? "ejercicio guardado" : "ejercicios guardados"}</p>
+      </section>
+      <div class="action-row">
+        <button class="btn btn-primary" type="button" data-action="add-exercise-screen" data-day-id="${day.id}">Añadir ejercicio</button>
+        <button class="btn btn-secondary" type="button" data-action="edit-day" data-day-id="${day.id}">Editar nombre</button>
+        <button class="btn btn-danger" type="button" data-action="delete-day" data-day-id="${day.id}">Eliminar día</button>
       </div>
-    </details>
+      ${editingDay ? renderDayNameEditor(day) : ""}
+      <section class="grid">
+        <div>
+          <h2>Ejercicios</h2>
+          <p class="tiny">Toca “Ver instrucciones” para abrir la guía de cada ejercicio.</p>
+        </div>
+        ${day.exercises.length ? day.exercises.map((exercise) => renderExerciseCard(day, exercise)).join("") : renderInlineEmpty("Este día todavía no tiene ejercicios.")}
+      </section>
+    </section>
+  `;
+}
+
+function renderDayNameEditor(day) {
+  return `
+    <section class="card form-card">
+      <div>
+        <span class="chip">Editar día</span>
+        <h2>Editar nombre del día</h2>
+      </div>
+      <form data-form="day" class="form-grid">
+        <input type="hidden" name="id" value="${escapeHTML(day.id)}" />
+        <div class="field">
+          <label>Número de día</label>
+          <input name="dayNumber" type="number" min="1" required value="${escapeHTML(day.dayNumber)}" />
+        </div>
+        <div class="field">
+          <label>Nombre del día</label>
+          <input name="name" type="text" required value="${escapeHTML(day.name)}" />
+        </div>
+        <button class="btn btn-primary full" type="submit">Guardar cambios</button>
+        <button class="btn btn-ghost full" type="button" data-action="cancel-edit-day" data-day-id="${day.id}">Cancelar edición</button>
+      </form>
+    </section>
   `;
 }
 
@@ -382,7 +485,6 @@ function renderExerciseCard(day, exercise) {
   return `
     <article class="exercise-card">
       <h3>${escapeHTML(exercise.name)}</h3>
-      <p>${escapeHTML(exercise.description || "Sin descripción breve.")}</p>
       <div class="exercise-meta">
         <span class="pill accent">${escapeHTML(exercise.muscleGroup || "Sin grupo")}</span>
         <span class="pill">${escapeHTML(exercise.plannedSets || "—")} series</span>
@@ -390,6 +492,7 @@ function renderExerciseCard(day, exercise) {
       </div>
       <details>
         <summary class="tiny">Ver instrucciones</summary>
+        <p>${escapeHTML(exercise.description || "Sin descripción breve.")}</p>
         <p>${escapeHTML(exercise.instructions || "Añade instrucciones para convertir tu rutina en una guía personal.")}</p>
       </details>
       <div class="action-row">
@@ -400,19 +503,61 @@ function renderExerciseCard(day, exercise) {
   `;
 }
 
-function renderCatalogPicker(day) {
-  const picker = state.catalogPicker?.dayId === day.id ? state.catalogPicker : null;
-  if (!picker || picker.step === "closed") return "";
+function renderAddExerciseScreen(day) {
+  const { addMode } = state.routineView;
+  const editing = state.editingExercise?.dayId === day.id;
+  return `
+    <section class="screen-stack">
+      <button class="btn btn-ghost" type="button" data-action="back-to-day" data-day-id="${day.id}">← Día</button>
+      <section class="card form-card">
+        <span class="chip">Día ${escapeHTML(day.dayNumber)}</span>
+        <h2>${editing ? "Editar ejercicio" : addMode === "manual" || getExerciseDraft(day.id) ? "Guardar ejercicio" : "Añadir ejercicio"}</h2>
+        <p>${editing || addMode === "manual" || getExerciseDraft(day.id) ? "Revisa los datos antes de guardar. Los ejercicios del catálogo no se guardan automáticamente." : "Elige cómo quieres añadir el próximo ejercicio."}</p>
+      </section>
+      ${!editing && !addMode && !getExerciseDraft(day.id) ? renderAddExerciseOptions(day) : renderExerciseForm(day, true)}
+    </section>
+  `;
+}
 
-  const steps = { group: "Paso 1 de 3 · Grupo muscular", subgroup: "Paso 2 de 3 · Zona", exercise: "Paso 3 de 3 · Ejercicio" };
-  const backButton = picker.step !== "group"
-    ? `<button class="btn btn-ghost" type="button" data-action="catalog-back" data-day-id="${day.id}">← Volver</button>`
-    : `<button class="btn btn-ghost" type="button" data-action="catalog-close" data-day-id="${day.id}">Cerrar catálogo</button>`;
+function renderAddExerciseOptions(day) {
+  return `
+    <section class="choice-grid">
+      <button class="choice-card" type="button" data-action="open-catalog-screen" data-day-id="${day.id}">
+        <strong>Escoger del catálogo</strong>
+        <span>Guía por grupo muscular, zona y ejercicio recomendado.</span>
+      </button>
+      <button class="choice-card" type="button" data-action="manual-exercise-screen" data-day-id="${day.id}">
+        <strong>Añadir manualmente</strong>
+        <span>Escribe nombre, grupo, instrucciones, series y repeticiones.</span>
+      </button>
+    </section>
+  `;
+}
 
-  let cards = "";
+function renderCatalogScreen(day) {
+  const picker = state.catalogPicker?.dayId === day.id ? state.catalogPicker : { dayId: day.id, step: "group", group: null, subgroup: null };
+  state.catalogPicker = picker;
+  const steps = { group: "Paso 1 de 3", subgroup: "Paso 2 de 3", exercise: "Paso 3 de 3" };
+  const title = picker.step === "group" ? "Grupo muscular" : picker.step === "subgroup" ? "Zona" : "Ejercicio";
+  const cards = renderCatalogStepCards(day, picker);
+  return `
+    <section class="screen-stack catalog-screen">
+      <button class="btn btn-ghost" type="button" data-action="back-to-day" data-day-id="${day.id}">← Día ${escapeHTML(day.dayNumber)}</button>
+      <section class="hero-card catalog-hero">
+        <span class="chip">${steps[picker.step]}</span>
+        <h2 class="hero-title">Escoge un ejercicio</h2>
+        <p>${escapeHTML(title)}${picker.group ? ` · ${escapeHTML(picker.group)}` : ""}${picker.subgroup ? ` · ${escapeHTML(picker.subgroup)}` : ""}</p>
+      </section>
+      <div class="catalog-grid">${cards}</div>
+      ${picker.step !== "group" ? `<button class="btn btn-secondary" type="button" data-action="catalog-back" data-day-id="${day.id}">← Volver al paso anterior</button>` : ""}
+    </section>
+  `;
+}
+
+function renderCatalogStepCards(day, picker) {
   if (picker.step === "group") {
-    cards = getCatalogGroups().map((group) => `
-      <button class="catalog-card ${picker.group === group ? "selected" : ""}" type="button" data-action="catalog-select-group" data-day-id="${day.id}" data-group="${escapeHTML(group)}">
+    return getCatalogGroups().map((group) => `
+      <button class="catalog-card" type="button" data-action="catalog-select-group" data-day-id="${day.id}" data-group="${escapeHTML(group)}">
         <strong>${escapeHTML(group)}</strong>
         <span>${getCatalogSubgroups(group).length} zonas disponibles</span>
       </button>
@@ -420,54 +565,32 @@ function renderCatalogPicker(day) {
   }
 
   if (picker.step === "subgroup") {
-    cards = getCatalogSubgroups(picker.group).map((subgroup) => `
-      <button class="catalog-card ${picker.subgroup === subgroup ? "selected" : ""}" type="button" data-action="catalog-select-subgroup" data-day-id="${day.id}" data-subgroup="${escapeHTML(subgroup)}">
+    return getCatalogSubgroups(picker.group).map((subgroup) => `
+      <button class="catalog-card" type="button" data-action="catalog-select-subgroup" data-day-id="${day.id}" data-subgroup="${escapeHTML(subgroup)}">
         <strong>${escapeHTML(subgroup)}</strong>
         <span>${getCatalogExercises(picker.group, subgroup).length} ejercicios recomendados</span>
       </button>
     `).join("");
   }
 
-  if (picker.step === "exercise") {
-    cards = getCatalogExercises(picker.group, picker.subgroup).map((exerciseName) => `
-      <button class="catalog-card" type="button" data-action="catalog-select-exercise" data-day-id="${day.id}" data-exercise-name="${escapeHTML(exerciseName)}">
-        <strong>${escapeHTML(exerciseName)}</strong>
-        <span>Rellenar formulario y revisar</span>
-      </button>
-    `).join("");
-  }
-
-  return `
-    <div class="catalog-panel">
-      <div>
-        <span class="chip">${steps[picker.step]}</span>
-        <h3>${picker.step === "group" ? "Escoge un ejercicio" : picker.step === "subgroup" ? "Elige la zona" : "Elige el ejercicio"}</h3>
-        <p>${escapeHTML([picker.group, picker.subgroup].filter(Boolean).join(" · ") || "Selecciona una tarjeta grande para avanzar.")}</p>
-      </div>
-      <div class="catalog-grid">${cards}</div>
-      ${backButton}
-    </div>
-  `;
+  return getCatalogExercises(picker.group, picker.subgroup).map((exerciseName) => `
+    <button class="catalog-card" type="button" data-action="catalog-select-exercise" data-day-id="${day.id}" data-exercise-name="${escapeHTML(exerciseName)}">
+      <strong>${escapeHTML(exerciseName)}</strong>
+      <span>Rellenar y revisar antes de guardar</span>
+    </button>
+  `).join("");
 }
 
-function renderExerciseForm(day) {
+function renderExerciseForm(day, hideChooser = false) {
   const editing = state.editingExercise?.dayId === day.id ? day.exercises.find((exercise) => exercise.id === state.editingExercise.exerciseId) : null;
   const draft = !editing ? getExerciseDraft(day.id) : null;
   const values = editing || draft || {};
-  const catalogOpen = state.catalogPicker?.dayId === day.id && state.catalogPicker.step !== "closed";
   return `
     <section class="card form-card">
       <div>
-        <h3>${editing ? "Editar ejercicio" : "Añadir ejercicio"}</h3>
-        <p class="tiny">Elige si quieres escribirlo a mano o rellenarlo automáticamente desde el catálogo.</p>
+        <h3>${editing ? "Editar ejercicio" : draft ? "Revisar ejercicio" : "Añadir manualmente"}</h3>
+        <p class="tiny">${draft ? "Datos cargados desde catálogo. Puedes editarlos antes de guardar." : "Completa los datos del ejercicio para este día."}</p>
       </div>
-      ${!editing ? `
-        <div class="mode-switch" aria-label="Modo para añadir ejercicio">
-          <button class="mode-option ${catalogOpen ? "" : "active"}" type="button" data-action="catalog-close" data-day-id="${day.id}">Añadir manualmente</button>
-          <button class="mode-option ${catalogOpen ? "active" : ""}" type="button" data-action="catalog-open" data-day-id="${day.id}">Escoger desde catálogo</button>
-        </div>
-        ${renderCatalogPicker(day)}
-      ` : ""}
       <form data-form="exercise" data-day-id="${day.id}" class="form-grid">
         <input type="hidden" name="id" value="${escapeHTML(editing?.id || "")}" />
         <div class="field full">
@@ -494,8 +617,8 @@ function renderExerciseForm(day) {
           <label>Instrucciones de ejecución</label>
           <textarea name="instructions" placeholder="Baja de forma controlada y empuja manteniendo estabilidad.">${escapeHTML(values.instructions || "")}</textarea>
         </div>
-        <button class="btn btn-primary full" type="submit">${editing ? "Guardar ejercicio" : "Añadir ejercicio"}</button>
-        ${editing ? `<button class="btn btn-ghost full" type="button" data-action="cancel-edit-exercise">Cancelar edición</button>` : ""}
+        <button class="btn btn-primary full" type="submit">Guardar ejercicio</button>
+        ${editing ? `<button class="btn btn-ghost full" type="button" data-action="cancel-edit-exercise" data-day-id="${day.id}">Cancelar edición</button>` : ""}
       </form>
     </section>
   `;
@@ -757,8 +880,11 @@ function saveDay(formData) {
     const day = state.data.routineDays.find((item) => item.id === formData.id);
     Object.assign(day, { name, dayNumber });
     state.editingDayId = null;
+    state.routineView = { screen: "detail", dayId: day.id, addMode: null };
   } else {
-    state.data.routineDays.push({ id: createId("day"), dayNumber, name, exercises: [] });
+    const newDay = { id: createId("day"), dayNumber, name, exercises: [] };
+    state.data.routineDays.push(newDay);
+    state.routineView = { screen: "detail", dayId: newDay.id, addMode: null };
   }
   saveData("Día guardado correctamente.");
 }
@@ -785,6 +911,7 @@ function saveExercise(dayId, formData) {
     clearExerciseDraft(dayId);
     if (state.catalogPicker?.dayId === dayId) state.catalogPicker = null;
   }
+  state.routineView = { screen: "detail", dayId, addMode: null };
   saveData("Ejercicio guardado.");
 }
 
@@ -833,14 +960,26 @@ async function handleClick(event) {
     state.selectedTrainingDayId = suggested?.id || sortedRoutineDays()[0]?.id || null;
     return navigate("train");
   }
-  if (action === "edit-day") { state.editingDayId = target.dataset.dayId; return render(); }
-  if (action === "cancel-edit-day") { state.editingDayId = null; return render(); }
-  if (action === "edit-exercise") { state.editingExercise = { dayId: target.dataset.dayId, exerciseId: target.dataset.exerciseId }; state.catalogPicker = null; return render(); }
-  if (action === "cancel-edit-exercise") { state.editingExercise = null; return render(); }
-  if (action === "catalog-open") { state.catalogPicker = { dayId: target.dataset.dayId, step: "group", group: null, subgroup: null }; return render(); }
-  if (action === "catalog-close") { state.catalogPicker = null; clearExerciseDraft(target.dataset.dayId); return render(); }
-  if (action === "catalog-select-group") { state.catalogPicker = { dayId: target.dataset.dayId, step: "subgroup", group: target.dataset.group, subgroup: null }; return render(); }
-  if (action === "catalog-select-subgroup") { state.catalogPicker = { ...state.catalogPicker, step: "exercise", subgroup: target.dataset.subgroup }; return render(); }
+  if (action === "create-day-screen") { state.editingDayId = null; return setRoutineView("create"); }
+  if (action === "back-to-routine") { state.editingDayId = null; state.editingExercise = null; return setRoutineView("list"); }
+  if (action === "open-routine-day") return setRoutineView("detail", { dayId: target.dataset.dayId });
+  if (action === "back-to-day") { state.editingExercise = null; state.catalogPicker = null; clearExerciseDraft(target.dataset.dayId); return setRoutineView("detail", { dayId: target.dataset.dayId }); }
+  if (action === "add-exercise-screen") { state.editingExercise = null; return setRoutineView("add", { dayId: target.dataset.dayId }); }
+  if (action === "manual-exercise-screen") return setRoutineView("add", { dayId: target.dataset.dayId, addMode: "manual" });
+  if (action === "open-catalog-screen") {
+    state.catalogPicker = { dayId: target.dataset.dayId, step: "group", group: null, subgroup: null };
+    return setRoutineView("catalog", { dayId: target.dataset.dayId });
+  }
+  if (action === "edit-day") { state.editingDayId = target.dataset.dayId; return setRoutineView("detail", { dayId: target.dataset.dayId }); }
+  if (action === "cancel-edit-day") { state.editingDayId = null; return target.dataset.dayId ? setRoutineView("detail", { dayId: target.dataset.dayId }) : setRoutineView("list"); }
+  if (action === "edit-exercise") {
+    state.editingExercise = { dayId: target.dataset.dayId, exerciseId: target.dataset.exerciseId };
+    state.catalogPicker = null;
+    return setRoutineView("add", { dayId: target.dataset.dayId, addMode: "manual" });
+  }
+  if (action === "cancel-edit-exercise") { state.editingExercise = null; return setRoutineView("detail", { dayId: target.dataset.dayId }); }
+  if (action === "catalog-select-group") { state.catalogPicker = { dayId: target.dataset.dayId, step: "subgroup", group: target.dataset.group, subgroup: null }; return setRoutineView("catalog", { dayId: target.dataset.dayId }); }
+  if (action === "catalog-select-subgroup") { state.catalogPicker = { ...state.catalogPicker, step: "exercise", subgroup: target.dataset.subgroup }; return setRoutineView("catalog", { dayId: target.dataset.dayId }); }
   if (action === "catalog-select-exercise") return selectCatalogExercise(target.dataset.dayId, target.dataset.exerciseName);
   if (action === "catalog-back") return goBackInCatalog(target.dataset.dayId);
   if (action === "delete-day") return deleteDay(target.dataset.dayId);
@@ -860,8 +999,10 @@ function selectCatalogExercise(dayId, exerciseName) {
   if (!picker || picker.dayId !== dayId || !picker.group || !picker.subgroup) return showToast("Vuelve a escoger grupo y zona.");
   setExerciseDraft(dayId, buildCatalogExercise(picker.group, picker.subgroup, exerciseName));
   state.catalogPicker = null;
+  state.routineView = { screen: "add", dayId, addMode: "manual" };
   showToast("Ejercicio cargado. Revísalo y guarda.");
   render();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function goBackInCatalog(dayId) {
@@ -870,13 +1011,16 @@ function goBackInCatalog(dayId) {
   if (picker.step === "exercise") state.catalogPicker = { dayId, step: "subgroup", group: picker.group, subgroup: null };
   else if (picker.step === "subgroup") state.catalogPicker = { dayId, step: "group", group: null, subgroup: null };
   else state.catalogPicker = null;
-  render();
+  setRoutineView(state.catalogPicker ? "catalog" : "add", { dayId });
 }
 
 async function deleteDay(dayId) {
   const ok = await confirmAction("Eliminar día", "Se eliminará el día y todos sus ejercicios. Los entrenamientos históricos se conservarán.");
   if (!ok) return;
   state.data.routineDays = state.data.routineDays.filter((day) => day.id !== dayId);
+  state.editingDayId = null;
+  state.editingExercise = null;
+  state.routineView = { screen: "list", dayId: null, addMode: null };
   saveData("Día eliminado.");
 }
 
@@ -884,7 +1028,9 @@ async function deleteExercise(dayId, exerciseId) {
   const ok = await confirmAction("Eliminar ejercicio", "Se eliminará este ejercicio de la rutina. El historial ya registrado se conservará.");
   if (!ok) return;
   const day = state.data.routineDays.find((item) => item.id === dayId);
+  if (!day) return showToast("No se encontró el día del ejercicio.");
   day.exercises = day.exercises.filter((exercise) => exercise.id !== exerciseId);
+  state.routineView = { screen: "detail", dayId, addMode: null };
   saveData("Ejercicio eliminado.");
 }
 
@@ -915,6 +1061,7 @@ async function wipeData() {
   state.activeExerciseId = null;
   state.editingDayId = null;
   state.editingExercise = null;
+  state.routineView = { screen: "list", dayId: null, addMode: null };
   state.catalogPicker = null;
   state.exerciseDrafts = {};
   showToast("Datos borrados.");
