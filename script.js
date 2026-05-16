@@ -23,6 +23,8 @@ const state = {
   activeExerciseId: null,
   editingDayId: null,
   editingExercise: null,
+  catalogPicker: null,
+  exerciseDrafts: {},
 };
 
 const app = document.querySelector("#app");
@@ -38,6 +40,87 @@ const sectionTitles = {
   progress: "Progreso",
   profile: "Perfil",
 };
+
+const EXERCISE_CATALOG = {
+  Pecho: {
+    "Pecho alto": ["Press inclinado con mancuernas", "Press inclinado con barra", "Aperturas inclinadas"],
+    "Pecho medio": ["Press banca", "Press con mancuernas en banco plano", "Aperturas en banco plano"],
+    "Pecho bajo": ["Fondos en paralelas", "Press declinado", "Cruces en polea alta"],
+  },
+  Espalda: {
+    Dorsal: ["Jalón al pecho", "Dominadas", "Pullover en polea"],
+    "Espalda media": ["Remo con barra", "Remo sentado en polea", "Remo con mancuerna"],
+    "Espalda baja": ["Peso muerto rumano", "Hiperextensiones", "Buenos días"],
+    Trapecio: ["Encogimientos con mancuernas", "Face pulls", "Remo al mentón"],
+  },
+  Bíceps: {
+    "Bíceps general": ["Curl con barra", "Curl con mancuernas", "Curl en polea"],
+    "Cabeza larga": ["Curl inclinado con mancuernas", "Curl martillo", "Curl bayesian en polea"],
+    "Cabeza corta": ["Curl predicador", "Curl concentrado", "Curl con barra Z"],
+    Braquial: ["Curl martillo", "Curl inverso", "Curl en cuerda"],
+  },
+  Tríceps: {
+    "Tríceps general": ["Jalón de tríceps en polea", "Press cerrado", "Fondos en banco"],
+    "Cabeza larga": ["Extensión de tríceps por encima de la cabeza", "Extensión con mancuerna a dos manos", "Extensión en polea alta por encima de la cabeza"],
+    "Cabeza lateral": ["Jalón con cuerda", "Jalón con barra recta", "Patada de tríceps"],
+    "Cabeza medial": ["Jalón inverso", "Press cerrado", "Extensión en polea con agarre supino"],
+  },
+  Hombro: {
+    "Deltoide anterior": ["Press militar", "Press Arnold", "Elevaciones frontales"],
+    "Deltoide lateral": ["Elevaciones laterales", "Elevaciones laterales en polea", "Press con mancuernas"],
+    "Deltoide posterior": ["Pájaros con mancuernas", "Face pulls", "Reverse pec deck"],
+  },
+  Pierna: {
+    Cuádriceps: ["Sentadilla", "Prensa", "Extensión de cuádriceps"],
+    Isquios: ["Peso muerto rumano", "Curl femoral tumbado", "Curl femoral sentado"],
+    Gemelos: ["Elevación de gemelos de pie", "Elevación de gemelos sentado", "Gemelos en prensa"],
+    Aductores: ["Máquina de aductores", "Sentadilla sumo", "Zancada lateral"],
+    Abductores: ["Máquina de abductores", "Caminata lateral con banda", "Abducción de cadera en polea"],
+  },
+  Glúteo: {
+    "Glúteo mayor": ["Hip thrust", "Peso muerto rumano", "Sentadilla profunda"],
+    "Glúteo medio": ["Abducción de cadera", "Caminata lateral con banda", "Patada lateral en polea"],
+  },
+  Abdomen: {
+    "Abdomen superior": ["Crunch", "Crunch en máquina", "Crunch en polea"],
+    "Abdomen inferior": ["Elevaciones de piernas", "Crunch inverso", "Rodillas al pecho"],
+    Oblicuos: ["Plancha lateral", "Giros rusos", "Woodchopper en polea"],
+    Core: ["Plancha", "Dead bug", "Pallof press"],
+  },
+  Antebrazo: {
+    Flexores: ["Curl de muñeca", "Curl de muñeca con barra", "Farmer walk"],
+    Extensores: ["Curl inverso de muñeca", "Curl inverso con barra", "Extensión de muñeca con mancuerna"],
+    Agarre: ["Farmer walk", "Dead hang", "Pinza con discos"],
+  },
+};
+
+const CATALOG_EXERCISE_DETAILS = {
+  "Press banca": {
+    description: "Ejercicio básico para trabajar principalmente el pecho, con apoyo de hombro anterior y tríceps.",
+    instructions: "Túmbate en el banco, baja la barra de forma controlada hasta el pecho y empuja manteniendo los hombros estables.",
+    plannedSets: 4,
+    targetReps: "8-10",
+  },
+  Plancha: {
+    description: "Ejercicio isométrico para fortalecer el core y mejorar la estabilidad del tronco.",
+    instructions: "Apoya antebrazos y puntas de los pies, mantén el cuerpo en línea recta y contrae el abdomen sin hundir la cadera.",
+    plannedSets: 3,
+    targetReps: "30-60 seg",
+  },
+  "Plancha lateral": {
+    description: "Ejercicio isométrico para oblicuos, estabilidad lateral y control del core.",
+    instructions: "Apoya un antebrazo, eleva la cadera y mantén el cuerpo alineado sin rotar el tronco.",
+    plannedSets: 3,
+    targetReps: "30-45 seg",
+  },
+  "Dead hang": {
+    description: "Ejercicio simple para mejorar agarre, hombros y resistencia de antebrazo.",
+    instructions: "Cuélgate de una barra con agarre firme, mantén hombros activos y controla la respiración durante el tiempo marcado.",
+    plannedSets: 3,
+    targetReps: "30-60 seg",
+  },
+};
+
 
 function loadData() {
   try {
@@ -99,9 +182,8 @@ function getSuggestedRoutineDay() {
 
 function getTodayText() {
   const dayNumber = getSuggestedDayNumber();
-  if (!dayNumber) return "Hoy no tienes entrenamiento asignado";
   const routineDay = getSuggestedRoutineDay();
-  return routineDay ? `Hoy toca: Día ${dayNumber} — ${routineDay.name}` : "Hoy no tienes una rutina asignada";
+  return dayNumber && routineDay ? `Hoy toca: Día ${dayNumber} — ${routineDay.name}` : "Hoy es día de descanso";
 }
 
 function sortedRoutineDays() {
@@ -171,11 +253,13 @@ function renderHome() {
   const lastWeight = state.data.bodyWeightHistory.at(-1);
   const todayRoutine = getSuggestedRoutineDay();
   return `
-    <section class="hero-card">
-      <span class="chip">Entrenamiento de hoy</span>
+    <section class="hero-card ${todayRoutine ? "" : "rest-card"}">
+      ${todayRoutine ? `<span class="chip">Entrenamiento de hoy</span>` : ""}
       <h2 class="hero-title">${escapeHTML(getTodayText())}</h2>
-      <p class="hero-text">Tu rutina vive en este navegador con localStorage. No hay cuentas, backend ni datos compartidos entre dispositivos.</p>
-      <button class="btn btn-primary" type="button" data-action="start-from-home" ${todayRoutine ? "" : "data-fallback='true'"}>Empezar entrenamiento</button>
+      ${todayRoutine ? `
+        <p class="hero-text">Tu rutina vive en este navegador con localStorage. No hay cuentas, backend ni datos compartidos entre dispositivos.</p>
+        <button class="btn btn-primary" type="button" data-action="start-from-home">Empezar entrenamiento</button>
+      ` : ""}
     </section>
     <section class="stats-grid">
       ${statCard("Semana", workoutsThisWeek, "entrenamientos registrados")}
@@ -197,6 +281,45 @@ function getWorkoutsThisWeek() {
   monday.setDate(now.getDate() - diff);
   monday.setHours(0, 0, 0, 0);
   return state.data.workouts.filter((workout) => new Date(`${workout.date}T00:00:00`) >= monday);
+}
+
+
+function getExerciseDraft(dayId) {
+  return state.exerciseDrafts[dayId] || null;
+}
+
+function setExerciseDraft(dayId, draft) {
+  state.exerciseDrafts[dayId] = draft;
+}
+
+function clearExerciseDraft(dayId) {
+  delete state.exerciseDrafts[dayId];
+}
+
+function getCatalogGroups() {
+  return Object.keys(EXERCISE_CATALOG);
+}
+
+function getCatalogSubgroups(group) {
+  return Object.keys(EXERCISE_CATALOG[group] || {});
+}
+
+function getCatalogExercises(group, subgroup) {
+  return EXERCISE_CATALOG[group]?.[subgroup] || [];
+}
+
+function buildCatalogExercise(group, subgroup, exerciseName) {
+  const custom = CATALOG_EXERCISE_DETAILS[exerciseName] || {};
+  const isAbs = group === "Abdomen";
+  const defaultReps = isAbs ? (subgroup === "Core" || exerciseName.toLowerCase().includes("plancha") ? "30-60 seg" : "12-20") : "8-12";
+  return {
+    name: exerciseName,
+    muscleGroup: group,
+    description: custom.description || `Ejercicio recomendado para trabajar ${subgroup.toLowerCase()} dentro de ${group.toLowerCase()}.`,
+    instructions: custom.instructions || `Realiza ${exerciseName.toLowerCase()} con técnica controlada, rango de movimiento cómodo y sin perder estabilidad durante la serie.`,
+    plannedSets: custom.plannedSets || (isAbs ? 3 : 4),
+    targetReps: custom.targetReps || defaultReps,
+  };
 }
 
 function renderRoutine() {
@@ -277,36 +400,99 @@ function renderExerciseCard(day, exercise) {
   `;
 }
 
+function renderCatalogPicker(day) {
+  const picker = state.catalogPicker?.dayId === day.id ? state.catalogPicker : null;
+  if (!picker || picker.step === "closed") return "";
+
+  const steps = { group: "Paso 1 de 3 · Grupo muscular", subgroup: "Paso 2 de 3 · Zona", exercise: "Paso 3 de 3 · Ejercicio" };
+  const backButton = picker.step !== "group"
+    ? `<button class="btn btn-ghost" type="button" data-action="catalog-back" data-day-id="${day.id}">← Volver</button>`
+    : `<button class="btn btn-ghost" type="button" data-action="catalog-close" data-day-id="${day.id}">Cerrar catálogo</button>`;
+
+  let cards = "";
+  if (picker.step === "group") {
+    cards = getCatalogGroups().map((group) => `
+      <button class="catalog-card ${picker.group === group ? "selected" : ""}" type="button" data-action="catalog-select-group" data-day-id="${day.id}" data-group="${escapeHTML(group)}">
+        <strong>${escapeHTML(group)}</strong>
+        <span>${getCatalogSubgroups(group).length} zonas disponibles</span>
+      </button>
+    `).join("");
+  }
+
+  if (picker.step === "subgroup") {
+    cards = getCatalogSubgroups(picker.group).map((subgroup) => `
+      <button class="catalog-card ${picker.subgroup === subgroup ? "selected" : ""}" type="button" data-action="catalog-select-subgroup" data-day-id="${day.id}" data-subgroup="${escapeHTML(subgroup)}">
+        <strong>${escapeHTML(subgroup)}</strong>
+        <span>${getCatalogExercises(picker.group, subgroup).length} ejercicios recomendados</span>
+      </button>
+    `).join("");
+  }
+
+  if (picker.step === "exercise") {
+    cards = getCatalogExercises(picker.group, picker.subgroup).map((exerciseName) => `
+      <button class="catalog-card" type="button" data-action="catalog-select-exercise" data-day-id="${day.id}" data-exercise-name="${escapeHTML(exerciseName)}">
+        <strong>${escapeHTML(exerciseName)}</strong>
+        <span>Rellenar formulario y revisar</span>
+      </button>
+    `).join("");
+  }
+
+  return `
+    <div class="catalog-panel">
+      <div>
+        <span class="chip">${steps[picker.step]}</span>
+        <h3>${picker.step === "group" ? "Escoge un ejercicio" : picker.step === "subgroup" ? "Elige la zona" : "Elige el ejercicio"}</h3>
+        <p>${escapeHTML([picker.group, picker.subgroup].filter(Boolean).join(" · ") || "Selecciona una tarjeta grande para avanzar.")}</p>
+      </div>
+      <div class="catalog-grid">${cards}</div>
+      ${backButton}
+    </div>
+  `;
+}
+
 function renderExerciseForm(day) {
   const editing = state.editingExercise?.dayId === day.id ? day.exercises.find((exercise) => exercise.id === state.editingExercise.exerciseId) : null;
+  const draft = !editing ? getExerciseDraft(day.id) : null;
+  const values = editing || draft || {};
+  const catalogOpen = state.catalogPicker?.dayId === day.id && state.catalogPicker.step !== "closed";
   return `
     <section class="card form-card">
-      <h3>${editing ? "Editar ejercicio" : "Añadir ejercicio"}</h3>
+      <div>
+        <h3>${editing ? "Editar ejercicio" : "Añadir ejercicio"}</h3>
+        <p class="tiny">Elige si quieres escribirlo a mano o rellenarlo automáticamente desde el catálogo.</p>
+      </div>
+      ${!editing ? `
+        <div class="mode-switch" aria-label="Modo para añadir ejercicio">
+          <button class="mode-option ${catalogOpen ? "" : "active"}" type="button" data-action="catalog-close" data-day-id="${day.id}">Añadir manualmente</button>
+          <button class="mode-option ${catalogOpen ? "active" : ""}" type="button" data-action="catalog-open" data-day-id="${day.id}">Escoger desde catálogo</button>
+        </div>
+        ${renderCatalogPicker(day)}
+      ` : ""}
       <form data-form="exercise" data-day-id="${day.id}" class="form-grid">
         <input type="hidden" name="id" value="${escapeHTML(editing?.id || "")}" />
         <div class="field full">
           <label>Nombre del ejercicio</label>
-          <input name="name" type="text" placeholder="Press banca" required value="${escapeHTML(editing?.name || "")}" />
+          <input name="name" type="text" placeholder="Press banca" required value="${escapeHTML(values.name || "")}" />
         </div>
         <div class="field">
           <label>Grupo muscular</label>
-          <input name="muscleGroup" type="text" placeholder="Pecho" value="${escapeHTML(editing?.muscleGroup || "")}" />
+          <input name="muscleGroup" type="text" placeholder="Pecho" value="${escapeHTML(values.muscleGroup || "")}" />
         </div>
         <div class="field">
           <label>Series previstas</label>
-          <input name="plannedSets" type="number" min="1" placeholder="4" value="${escapeHTML(editing?.plannedSets || "")}" />
+          <input name="plannedSets" type="number" min="1" placeholder="4" value="${escapeHTML(values.plannedSets || "")}" />
         </div>
         <div class="field full">
           <label>Repeticiones objetivo</label>
-          <input name="targetReps" type="text" placeholder="8-10" value="${escapeHTML(editing?.targetReps || "")}" />
+          <input name="targetReps" type="text" placeholder="8-10" value="${escapeHTML(values.targetReps || "")}" />
         </div>
         <div class="field full">
           <label>Descripción breve</label>
-          <textarea name="description" placeholder="Ejercicio básico para trabajar el pecho.">${escapeHTML(editing?.description || "")}</textarea>
+          <textarea name="description" placeholder="Ejercicio básico para trabajar el pecho.">${escapeHTML(values.description || "")}</textarea>
         </div>
         <div class="field full">
           <label>Instrucciones de ejecución</label>
-          <textarea name="instructions" placeholder="Baja de forma controlada y empuja manteniendo estabilidad.">${escapeHTML(editing?.instructions || "")}</textarea>
+          <textarea name="instructions" placeholder="Baja de forma controlada y empuja manteniendo estabilidad.">${escapeHTML(values.instructions || "")}</textarea>
         </div>
         <button class="btn btn-primary full" type="submit">${editing ? "Guardar ejercicio" : "Añadir ejercicio"}</button>
         ${editing ? `<button class="btn btn-ghost full" type="button" data-action="cancel-edit-exercise">Cancelar edición</button>` : ""}
@@ -596,6 +782,8 @@ function saveExercise(dayId, formData) {
     state.editingExercise = null;
   } else {
     day.exercises.push(payload);
+    clearExerciseDraft(dayId);
+    if (state.catalogPicker?.dayId === dayId) state.catalogPicker = null;
   }
   saveData("Ejercicio guardado.");
 }
@@ -647,8 +835,14 @@ async function handleClick(event) {
   }
   if (action === "edit-day") { state.editingDayId = target.dataset.dayId; return render(); }
   if (action === "cancel-edit-day") { state.editingDayId = null; return render(); }
-  if (action === "edit-exercise") { state.editingExercise = { dayId: target.dataset.dayId, exerciseId: target.dataset.exerciseId }; return render(); }
+  if (action === "edit-exercise") { state.editingExercise = { dayId: target.dataset.dayId, exerciseId: target.dataset.exerciseId }; state.catalogPicker = null; return render(); }
   if (action === "cancel-edit-exercise") { state.editingExercise = null; return render(); }
+  if (action === "catalog-open") { state.catalogPicker = { dayId: target.dataset.dayId, step: "group", group: null, subgroup: null }; return render(); }
+  if (action === "catalog-close") { state.catalogPicker = null; clearExerciseDraft(target.dataset.dayId); return render(); }
+  if (action === "catalog-select-group") { state.catalogPicker = { dayId: target.dataset.dayId, step: "subgroup", group: target.dataset.group, subgroup: null }; return render(); }
+  if (action === "catalog-select-subgroup") { state.catalogPicker = { ...state.catalogPicker, step: "exercise", subgroup: target.dataset.subgroup }; return render(); }
+  if (action === "catalog-select-exercise") return selectCatalogExercise(target.dataset.dayId, target.dataset.exerciseName);
+  if (action === "catalog-back") return goBackInCatalog(target.dataset.dayId);
   if (action === "delete-day") return deleteDay(target.dataset.dayId);
   if (action === "delete-exercise") return deleteExercise(target.dataset.dayId, target.dataset.exerciseId);
   if (action === "select-train-day") { state.selectedTrainingDayId = target.dataset.dayId; return render(); }
@@ -659,6 +853,24 @@ async function handleClick(event) {
   if (action === "finish-workout") return finishWorkout();
   if (action === "cancel-workout") return cancelWorkout();
   if (action === "wipe-data") return wipeData();
+}
+
+function selectCatalogExercise(dayId, exerciseName) {
+  const picker = state.catalogPicker;
+  if (!picker || picker.dayId !== dayId || !picker.group || !picker.subgroup) return showToast("Vuelve a escoger grupo y zona.");
+  setExerciseDraft(dayId, buildCatalogExercise(picker.group, picker.subgroup, exerciseName));
+  state.catalogPicker = null;
+  showToast("Ejercicio cargado. Revísalo y guarda.");
+  render();
+}
+
+function goBackInCatalog(dayId) {
+  const picker = state.catalogPicker;
+  if (!picker || picker.dayId !== dayId) return;
+  if (picker.step === "exercise") state.catalogPicker = { dayId, step: "subgroup", group: picker.group, subgroup: null };
+  else if (picker.step === "subgroup") state.catalogPicker = { dayId, step: "group", group: null, subgroup: null };
+  else state.catalogPicker = null;
+  render();
 }
 
 async function deleteDay(dayId) {
@@ -703,6 +915,8 @@ async function wipeData() {
   state.activeExerciseId = null;
   state.editingDayId = null;
   state.editingExercise = null;
+  state.catalogPicker = null;
+  state.exerciseDrafts = {};
   showToast("Datos borrados.");
   navigate("home");
 }
