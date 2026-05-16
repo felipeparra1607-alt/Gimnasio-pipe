@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#090b0f" />
+  <title>Gym Tracker Pro</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" aria-label="Cabecera de la aplicación">
+      <div>
+        <p class="eyebrow">Gym Tracker Pro</p>
+        <h1 id="screenTitle">Inicio</h1>
+      </div>
+      <div class="status-pill" id="storageStatus">Local</div>
+    </header>
+
+    <main id="app" class="app-content" tabindex="-1"></main>
+
+    <nav class="bottom-nav" aria-label="Navegación principal">
+      <button class="nav-item active" data-section="home" type="button" aria-label="Ir a Inicio">
+        <span aria-hidden="true">🏠</span>
+        <small>Inicio</small>
+      </button>
+      <button class="nav-item" data-section="routine" type="button" aria-label="Ir a Rutina">
+        <span aria-hidden="true">📋</span>
+        <small>Rutina</small>
+      </button>
+      <button class="nav-item" data-section="train" type="button" aria-label="Ir a Entrenar">
+        <span aria-hidden="true">⚡</span>
+        <small>Entrenar</small>
+      </button>
+      <button class="nav-item" data-section="progress" type="button" aria-label="Ir a Progreso">
+        <span aria-hidden="true">📈</span>
+        <small>Progreso</small>
+      </button>
+      <button class="nav-item" data-section="profile" type="button" aria-label="Ir a Perfil">
+        <span aria-hidden="true">👤</span>
+        <small>Perfil</small>
+      </button>
+    </nav>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="confirmDialog" class="dialog-card">
+    <form method="dialog">
+      <h2 id="confirmTitle">Confirmar acción</h2>
+      <p id="confirmMessage">¿Quieres continuar?</p>
+      <div class="dialog-actions">
+        <button value="cancel" class="btn btn-ghost" type="submit">Cancelar</button>
+        <button value="confirm" class="btn btn-danger" type="submit">Confirmar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="script.js"></script>
+</body>
+</html>
