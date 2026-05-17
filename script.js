@@ -23,6 +23,8 @@ const state = {
   activeExerciseId: null,
   editingDayId: null,
   editingExercise: null,
+  editingSet: null,
+  chartSlides: {},
   routineView: { screen: "list", dayId: null, addMode: null },
   progressView: { screen: "groups", group: null, exerciseKey: null },
   catalogPicker: null,
@@ -229,6 +231,7 @@ function escapeHTML(value = "") {
 function navigate(section) {
   state.section = section;
   state.activeExerciseId = null;
+  state.editingSet = null;
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.classList.toggle("active", button.dataset.section === section);
   });
@@ -752,10 +755,46 @@ function renderExerciseLogger(exercise) {
       </article>
       <section class="grid">
         <h3>Series registradas</h3>
-        ${exercise.sets.length ? exercise.sets.map((set) => `<div class="set-row"><strong>Serie ${set.setNumber}</strong><span>${set.weight} kg · ${set.reps} reps</span></div>`).join("") : renderInlineEmpty("Por defecto empiezas en Serie 1. Guarda la primera serie para verla aquí.")}
+        ${exercise.sets.length ? exercise.sets.map((set, index) => renderSetRow(exercise, set, index)).join("") : renderInlineEmpty("Por defecto empiezas en Serie 1. Guarda la primera serie para verla aquí.")}
       </section>
       <button class="btn btn-secondary" type="button" data-action="add-another-set">Añadir otra serie</button>
     </section>
+  `;
+}
+
+function renderSetRow(exercise, set, index) {
+  const isEditing = state.editingSet?.exerciseId === exercise.exerciseId && Number(state.editingSet.setIndex) === index;
+  if (isEditing) {
+    return `
+      <article class="set-row set-row-editing">
+        <form data-form="edit-set" data-exercise-id="${exercise.exerciseId}" data-set-index="${index}" class="set-form edit-set-form">
+          <strong>Editar serie ${set.setNumber}</strong>
+          <div class="field">
+            <label>Peso (kg)</label>
+            <input name="weight" type="number" min="0" step="0.5" required inputmode="decimal" value="${escapeHTML(set.weight)}" />
+          </div>
+          <div class="field">
+            <label>Repeticiones</label>
+            <input name="reps" type="number" min="1" step="1" required inputmode="numeric" value="${escapeHTML(set.reps)}" />
+          </div>
+          <button class="btn btn-primary" type="submit">Guardar cambios</button>
+          <button class="btn btn-ghost" type="button" data-action="cancel-edit-set">Cancelar</button>
+        </form>
+      </article>
+    `;
+  }
+
+  return `
+    <article class="set-row set-row-actions">
+      <div>
+        <strong>Serie ${set.setNumber}</strong>
+        <span>${escapeHTML(set.weight)} kg x ${escapeHTML(set.reps)} reps</span>
+      </div>
+      <div class="set-actions">
+        <button class="btn btn-ghost btn-small" type="button" data-action="edit-set" data-exercise-id="${exercise.exerciseId}" data-set-index="${index}">Editar</button>
+        <button class="btn btn-danger btn-small" type="button" data-action="delete-set" data-exercise-id="${exercise.exerciseId}" data-set-index="${index}">Eliminar</button>
+      </div>
+    </article>
   `;
 }
 
@@ -849,6 +888,7 @@ function renderProgressExercise(group, exerciseKey, summary) {
         ${statCard("Último día", progress.last.dayName, formatDate(progress.last.date))}
         ${statCard("Evolución", progress.evolutionLabel, "vs. sesión anterior")}
       </section>
+      ${renderChartCarousel(`progress-${exercise.key}`, "Evolución del peso máximo", progress.entries.map((entry) => ({ label: shortDate(entry.date), value: entry.maxWeight, note: `${entry.repsAtMax} reps` })), { unit: "kg", singleNote: "Necesitas más sesiones para ver una evolución clara.", emptyText: "Todavía no hay datos suficientes para generar la gráfica." })}
       <section class="card grid">
         <h2>Historial</h2>
         ${progress.entries.slice().reverse().map((entry) => `
@@ -947,6 +987,145 @@ function getExerciseProgressFromEntries(entries) {
   return { entries, last, previous, bestWeight, repsWithBestWeight, evolutionLabel };
 }
 
+function shortDate(dateString) {
+  if (!dateString) return "—";
+  return new Intl.DateTimeFormat("es", { day: "2-digit", month: "2-digit" }).format(new Date(`${dateString}T00:00:00`));
+}
+
+function renderChartCarousel(chartId, title, rawPoints, options = {}) {
+  const points = rawPoints
+    .map((point) => ({ ...point, value: Number(point.value) }))
+    .filter((point) => !Number.isNaN(point.value));
+  const activeIndex = Math.max(0, Math.min(1, state.chartSlides[chartId] || 0));
+  const safeTitle = escapeHTML(title);
+  const singleNote = points.length === 1 ? `<p class="chart-note">${escapeHTML(options.singleNote || "Necesitas más registros para ver una evolución clara.")}</p>` : "";
+
+  if (!points.length) {
+    return `
+      <section class="card chart-card">
+        <h2>${safeTitle}</h2>
+        ${renderInlineEmpty(options.emptyText || "Todavía no hay datos suficientes para generar la gráfica.")}
+      </section>
+    `;
+  }
+
+  const slides = [
+    { label: "Línea", html: renderLineChart(points, options) },
+    { label: "Barras", html: renderBarChart(points, options) },
+  ];
+
+  return `
+    <section class="card chart-card">
+      <div class="chart-header">
+        <div>
+          <span class="chip">Gráficas</span>
+          <h2>${safeTitle}</h2>
+        </div>
+        <div class="chart-arrows" aria-label="Cambiar gráfica">
+          <button class="btn btn-ghost btn-small" type="button" data-action="chart-prev" data-chart-id="${escapeHTML(chartId)}">←</button>
+          <button class="btn btn-ghost btn-small" type="button" data-action="chart-next" data-chart-id="${escapeHTML(chartId)}">→</button>
+        </div>
+      </div>
+      ${singleNote}
+      <div class="chart-carousel" data-chart-id="${escapeHTML(chartId)}" data-active-index="${activeIndex}">
+        <div class="chart-track" style="transform: translateX(-${activeIndex * 100}%);">
+          ${slides.map((slide) => `<article class="chart-slide"><h3>${slide.label}</h3>${slide.html}</article>`).join("")}
+        </div>
+      </div>
+      <div class="chart-dots" aria-label="Indicadores de gráfica">
+        ${slides.map((slide, index) => `<button class="chart-dot ${index === activeIndex ? "active" : ""}" type="button" data-action="chart-go" data-chart-id="${escapeHTML(chartId)}" data-chart-index="${index}" aria-label="Ver gráfica de ${slide.label}"></button>`).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function getChartBounds(points) {
+  const values = points.map((point) => point.value);
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const padding = maxValue === minValue ? Math.max(1, maxValue * 0.1) : (maxValue - minValue) * 0.12;
+  return { min: Math.max(0, minValue - padding), max: maxValue + padding };
+}
+
+function chartY(value, bounds, height = 150, top = 18) {
+  const range = bounds.max - bounds.min || 1;
+  return top + (height - ((value - bounds.min) / range) * height);
+}
+
+function renderLineChart(points, options = {}) {
+  const width = 320;
+  const height = 210;
+  const left = 32;
+  const right = 14;
+  const top = 18;
+  const chartHeight = 150;
+  const bounds = getChartBounds(points);
+  const step = points.length > 1 ? (width - left - right) / (points.length - 1) : 0;
+  const coords = points.map((point, index) => ({ x: points.length > 1 ? left + index * step : width / 2, y: chartY(point.value, bounds, chartHeight, top), point }));
+  const polyline = coords.map((coord) => `${coord.x.toFixed(2)},${coord.y.toFixed(2)}`).join(" ");
+  return `
+    <svg class="chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Gráfica de línea">
+      <line class="chart-axis" x1="${left}" y1="${top + chartHeight}" x2="${width - right}" y2="${top + chartHeight}" />
+      <line class="chart-axis" x1="${left}" y1="${top}" x2="${left}" y2="${top + chartHeight}" />
+      <text class="chart-label" x="${left}" y="14">${formatChartValue(bounds.max, options.unit)}</text>
+      <text class="chart-label" x="${left}" y="${height - 8}">${formatChartValue(bounds.min, options.unit)}</text>
+      ${coords.length > 1 ? `<polyline class="chart-line" points="${polyline}" />` : ""}
+      ${coords.map((coord) => `
+        <circle class="chart-point" cx="${coord.x}" cy="${coord.y}" r="4.5" />
+        <text class="chart-value" x="${coord.x}" y="${Math.max(12, coord.y - 9)}" text-anchor="middle">${formatChartValue(coord.point.value, options.unit)}</text>
+      `).join("")}
+      ${renderChartDateLabels(coords, height)}
+    </svg>
+  `;
+}
+
+function renderBarChart(points, options = {}) {
+  const width = 320;
+  const height = 210;
+  const left = 28;
+  const right = 14;
+  const top = 18;
+  const chartHeight = 150;
+  const bounds = getChartBounds(points);
+  const slot = (width - left - right) / points.length;
+  const barWidth = Math.max(14, Math.min(34, slot * 0.55));
+  const coords = points.map((point, index) => {
+    const y = chartY(point.value, bounds, chartHeight, top);
+    const x = left + index * slot + (slot - barWidth) / 2;
+    return { x, y, width: barWidth, height: top + chartHeight - y, point };
+  });
+  return `
+    <svg class="chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Gráfica de barras">
+      <line class="chart-axis" x1="${left}" y1="${top + chartHeight}" x2="${width - right}" y2="${top + chartHeight}" />
+      <text class="chart-label" x="${left}" y="14">${formatChartValue(bounds.max, options.unit)}</text>
+      ${coords.map((coord) => `
+        <rect class="chart-bar" x="${coord.x}" y="${coord.y}" width="${coord.width}" height="${Math.max(4, coord.height)}" rx="6" />
+        <text class="chart-value" x="${coord.x + coord.width / 2}" y="${Math.max(12, coord.y - 8)}" text-anchor="middle">${formatChartValue(coord.point.value, options.unit)}</text>
+      `).join("")}
+      ${renderChartDateLabels(coords.map((coord) => ({ x: coord.x + coord.width / 2, point: coord.point })), height)}
+    </svg>
+  `;
+}
+
+function renderChartDateLabels(coords, height) {
+  if (!coords.length) return "";
+  if (coords.length === 1) return `<text class="chart-label" x="${coords[0].x}" y="${height - 8}" text-anchor="middle">${escapeHTML(coords[0].point.label)}</text>`;
+  return coords.map((coord, index) => {
+    if (coords.length > 5 && index !== 0 && index !== coords.length - 1 && index % 2 !== 0) return "";
+    return `<text class="chart-label" x="${coord.x}" y="${height - 8}" text-anchor="middle">${escapeHTML(coord.point.label)}</text>`;
+  }).join("");
+}
+
+function formatChartValue(value, unit = "") {
+  const formatted = Number.isInteger(value) ? value : Number(value).toFixed(1).replace(/\.0$/, "");
+  return `${formatted}${unit ? ` ${unit}` : ""}`;
+}
+
+function setChartSlide(chartId, index) {
+  state.chartSlides[chartId] = Math.max(0, Math.min(1, index));
+  render();
+}
+
 function renderProfile() {
   const lastWeight = state.data.bodyWeightHistory.at(-1);
   return `
@@ -976,9 +1155,10 @@ function renderProfile() {
         <button class="btn btn-primary" type="submit">Guardar objetivo</button>
       </form>
     </section>
-    <section class="card grid">
+    ${renderBodyWeightChartSection()}
+    <section class="card grid history-secondary">
       <h2>Historial de peso</h2>
-      ${state.data.bodyWeightHistory.length ? state.data.bodyWeightHistory.slice().reverse().map((item) => `<div class="set-row"><strong>${formatDate(item.date)}</strong><span>${item.weight} kg</span></div>`).join("") : renderInlineEmpty("Aún no has registrado peso corporal.")}
+      ${state.data.bodyWeightHistory.length ? state.data.bodyWeightHistory.slice().reverse().map((item) => `<div class="set-row"><strong>${formatDate(item.date)}</strong><span>${item.weight} kg</span></div>`).join("") : renderInlineEmpty("Aún no has registrado tu peso corporal.")}
     </section>
     <section class="card form-card">
       <h2>Zona de seguridad</h2>
@@ -986,6 +1166,18 @@ function renderProfile() {
       <button class="btn btn-danger" type="button" data-action="wipe-data">Borrar todos los datos</button>
     </section>
   `;
+}
+
+function renderBodyWeightChartSection() {
+  const points = state.data.bodyWeightHistory
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((item) => ({ label: shortDate(item.date), value: Number(item.weight), note: "peso corporal" }));
+  return renderChartCarousel("body-weight", "Evolución del peso corporal", points, {
+    unit: "kg",
+    emptyText: "Todavía no has registrado tu peso corporal.",
+    singleNote: "Registra más pesos para ver tu evolución.",
+  });
 }
 
 function renderEmpty(icon, title, text) {
@@ -1005,6 +1197,7 @@ function handleSubmit(event) {
   if (type === "day") return saveDay(data);
   if (type === "exercise") return saveExercise(form.dataset.dayId, data);
   if (type === "set") return saveSet(form.dataset.exerciseId, data);
+  if (type === "edit-set") return saveEditedSet(form.dataset.exerciseId, form.dataset.setIndex, data);
   if (type === "body-weight") return saveBodyWeight(data);
   if (type === "goal") return saveGoal(data);
 }
@@ -1061,6 +1254,36 @@ function saveSet(exerciseId, formData) {
   if (!exercise || Number.isNaN(weight) || Number.isNaN(reps) || reps <= 0) return showToast("Añade peso y repeticiones válidas.");
   exercise.sets.push({ setNumber: exercise.sets.length + 1, weight, reps });
   showToast("Serie guardada.");
+  render();
+}
+
+function saveEditedSet(exerciseId, setIndex, formData) {
+  const exercise = state.activeWorkout?.exercises.find((item) => item.exerciseId === exerciseId);
+  const index = Number(setIndex);
+  const weight = Number(formData.weight);
+  const reps = Number(formData.reps);
+  if (!exercise || !exercise.sets[index] || Number.isNaN(weight) || Number.isNaN(reps) || reps <= 0) return showToast("Añade peso y repeticiones válidas.");
+  exercise.sets[index] = { ...exercise.sets[index], weight, reps };
+  renumberSets(exercise);
+  state.editingSet = null;
+  showToast("Serie actualizada.");
+  render();
+}
+
+function renumberSets(exercise) {
+  exercise.sets = exercise.sets.map((set, index) => ({ ...set, setNumber: index + 1 }));
+}
+
+async function deleteWorkoutSet(exerciseId, setIndex) {
+  const exercise = state.activeWorkout?.exercises.find((item) => item.exerciseId === exerciseId);
+  const index = Number(setIndex);
+  if (!exercise || !exercise.sets[index]) return showToast("No se encontró la serie.");
+  const ok = await confirmAction("Eliminar serie", `Se eliminará la Serie ${exercise.sets[index].setNumber}. Las series restantes se renumerarán.`);
+  if (!ok) return;
+  exercise.sets.splice(index, 1);
+  renumberSets(exercise);
+  state.editingSet = null;
+  showToast("Serie eliminada.");
   render();
 }
 
@@ -1130,10 +1353,16 @@ async function handleClick(event) {
   if (action === "select-train-day") { state.selectedTrainingDayId = target.dataset.dayId; return render(); }
   if (action === "begin-workout") return beginWorkout(target.dataset.dayId);
   if (action === "open-exercise-logger") { state.activeExerciseId = target.dataset.exerciseId; return render(); }
-  if (action === "back-to-workout") { state.activeExerciseId = null; return render(); }
+  if (action === "back-to-workout") { state.activeExerciseId = null; state.editingSet = null; return render(); }
   if (action === "add-another-set") return document.querySelector("[name='weight']")?.focus();
+  if (action === "edit-set") { state.editingSet = { exerciseId: target.dataset.exerciseId, setIndex: Number(target.dataset.setIndex) }; return render(); }
+  if (action === "cancel-edit-set") { state.editingSet = null; return render(); }
+  if (action === "delete-set") return deleteWorkoutSet(target.dataset.exerciseId, target.dataset.setIndex);
   if (action === "finish-workout") return finishWorkout();
   if (action === "cancel-workout") return cancelWorkout();
+  if (action === "chart-prev") return setChartSlide(target.dataset.chartId, (state.chartSlides[target.dataset.chartId] || 0) - 1);
+  if (action === "chart-next") return setChartSlide(target.dataset.chartId, (state.chartSlides[target.dataset.chartId] || 0) + 1);
+  if (action === "chart-go") return setChartSlide(target.dataset.chartId, Number(target.dataset.chartIndex));
   if (action === "wipe-data") return wipeData();
 }
 
@@ -1183,6 +1412,7 @@ async function finishWorkout() {
   state.data.workouts.push(state.activeWorkout);
   state.activeWorkout = null;
   state.activeExerciseId = null;
+  state.editingSet = null;
   saveData("Entrenamiento finalizado y guardado.");
 }
 
@@ -1191,6 +1421,7 @@ async function cancelWorkout() {
   if (!ok) return;
   state.activeWorkout = null;
   state.activeExerciseId = null;
+  state.editingSet = null;
   render();
 }
 
@@ -1202,10 +1433,12 @@ async function wipeData() {
   state.section = "home";
   state.activeWorkout = null;
   state.activeExerciseId = null;
+  state.editingSet = null;
   state.editingDayId = null;
   state.editingExercise = null;
   state.routineView = { screen: "list", dayId: null, addMode: null };
   state.progressView = { screen: "groups", group: null, exerciseKey: null };
+  state.chartSlides = {};
   state.catalogPicker = null;
   state.exerciseDrafts = {};
   showToast("Datos borrados.");
@@ -1216,11 +1449,31 @@ function handleChange() {
   // Reserved for future form controls that need live updates.
 }
 
+function handleChartTouchStart(event) {
+  const carousel = event.target.closest(".chart-carousel");
+  if (!carousel) return;
+  carousel.dataset.touchStartX = String(event.touches[0].clientX);
+}
+
+function handleChartTouchEnd(event) {
+  const carousel = event.target.closest(".chart-carousel");
+  if (!carousel || !carousel.dataset.touchStartX) return;
+  const startX = Number(carousel.dataset.touchStartX);
+  const endX = event.changedTouches[0].clientX;
+  const deltaX = endX - startX;
+  delete carousel.dataset.touchStartX;
+  if (Math.abs(deltaX) < 45) return;
+  const current = state.chartSlides[carousel.dataset.chartId] || 0;
+  setChartSlide(carousel.dataset.chartId, deltaX < 0 ? current + 1 : current - 1);
+}
+
 document.querySelectorAll(".nav-item").forEach((button) => {
   button.addEventListener("click", () => navigate(button.dataset.section));
 });
 app.addEventListener("submit", handleSubmit);
 app.addEventListener("click", handleClick);
 app.addEventListener("change", handleChange);
+app.addEventListener("touchstart", handleChartTouchStart, { passive: true });
+app.addEventListener("touchend", handleChartTouchEnd, { passive: true });
 
 render();
