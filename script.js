@@ -67,6 +67,47 @@ const MUSCLE_GROUP_ALIASES = {
   core: "Abdomen",
   antebrazo: "Antebrazo",
   antebrazos: "Antebrazo",
+  "pecho alto": "Pecho",
+  "pecho medio": "Pecho",
+  "pecho bajo": "Pecho",
+  dorsal: "Espalda",
+  "espalda media": "Espalda",
+  "espalda baja": "Espalda",
+  trapecio: "Espalda",
+  "biceps general": "Bíceps",
+  "bíceps general": "Bíceps",
+  "cabeza larga": "Bíceps",
+  "cabeza corta": "Bíceps",
+  braquial: "Bíceps",
+  "triceps general": "Tríceps",
+  "tríceps general": "Tríceps",
+  "cabeza larga de triceps": "Tríceps",
+  "cabeza larga de tríceps": "Tríceps",
+  "cabeza lateral": "Tríceps",
+  "cabeza lateral de triceps": "Tríceps",
+  "cabeza lateral de tríceps": "Tríceps",
+  "cabeza medial": "Tríceps",
+  "cabeza medial de triceps": "Tríceps",
+  "cabeza medial de tríceps": "Tríceps",
+  "deltoide anterior": "Hombro",
+  "deltoide lateral": "Hombro",
+  "deltoide posterior": "Hombro",
+  cuadriceps: "Pierna",
+  cuádriceps: "Pierna",
+  isquios: "Pierna",
+  gemelos: "Pierna",
+  aductores: "Pierna",
+  abductores: "Pierna",
+  "gluteo mayor": "Glúteo",
+  "glúteo mayor": "Glúteo",
+  "gluteo medio": "Glúteo",
+  "glúteo medio": "Glúteo",
+  "abdomen superior": "Abdomen",
+  "abdomen inferior": "Abdomen",
+  oblicuos: "Abdomen",
+  flexores: "Antebrazo",
+  extensores: "Antebrazo",
+  agarre: "Antebrazo",
 };
 
 const EXERCISE_CATALOG = {
@@ -344,16 +385,22 @@ function getCatalogExercises(group, subgroup) {
 
 function buildCatalogExercise(group, subgroup, exerciseName) {
   const custom = CATALOG_EXERCISE_DETAILS[exerciseName] || {};
-  const isAbs = group === "Abdomen";
-  const defaultReps = isAbs ? (subgroup === "Core" || exerciseName.toLowerCase().includes("plancha") ? "30-60 seg" : "12-20") : "8-12";
+  const specificMuscleGroup = getSpecificCatalogMuscleGroup(group, subgroup);
   return {
     name: exerciseName,
-    muscleGroup: group,
-    description: custom.description || `Ejercicio recomendado para trabajar ${subgroup.toLowerCase()} dentro de ${group.toLowerCase()}.`,
+    muscleGroup: specificMuscleGroup,
+    description: custom.description || `Ejercicio recomendado para trabajar ${specificMuscleGroup.toLowerCase()} dentro de ${group.toLowerCase()}.`,
     instructions: custom.instructions || `Realiza ${exerciseName.toLowerCase()} con técnica controlada, rango de movimiento cómodo y sin perder estabilidad durante la serie.`,
-    plannedSets: custom.plannedSets || (isAbs ? 3 : 4),
-    targetReps: custom.targetReps || defaultReps,
+    plannedSets: "",
+    targetReps: "",
   };
+}
+
+function getSpecificCatalogMuscleGroup(group, subgroup) {
+  if (group === "Tríceps" && ["Cabeza larga", "Cabeza lateral", "Cabeza medial"].includes(subgroup)) {
+    return `${subgroup} de tríceps`;
+  }
+  return subgroup;
 }
 
 function setRoutineView(screen, options = {}) {
@@ -1059,7 +1106,6 @@ function renderLineChart(points, options = {}) {
       <line class="chart-axis" x1="${left}" y1="${top + chartHeight}" x2="${width - right}" y2="${top + chartHeight}" />
       <line class="chart-axis" x1="${left}" y1="${top}" x2="${left}" y2="${top + chartHeight}" />
       <text class="chart-label" x="${left}" y="14">${formatChartValue(bounds.max, options.unit)}</text>
-      <text class="chart-label" x="${left}" y="${height - 8}">${formatChartValue(bounds.min, options.unit)}</text>
       ${coords.length > 1 ? `<polyline class="chart-line" points="${polyline}" />` : ""}
       ${coords.map((coord) => `
         <circle class="chart-point" cx="${coord.x}" cy="${coord.y}" r="4.5" />
