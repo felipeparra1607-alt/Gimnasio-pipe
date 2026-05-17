@@ -262,6 +262,11 @@ function render() {
   app.innerHTML = renderers[state.section]();
 }
 
+function renderPreservingScroll(scrollY = window.scrollY) {
+  render();
+  requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: "auto" }));
+}
+
 function renderOnboarding() {
   return `
     <section class="empty-state">
@@ -889,20 +894,6 @@ function renderProgressExercise(group, exerciseKey, summary) {
         ${statCard("Evolución", progress.evolutionLabel, "vs. sesión anterior")}
       </section>
       ${renderChartCarousel(`progress-${exercise.key}`, "Evolución del peso máximo", progress.entries.map((entry) => ({ label: shortDate(entry.date), value: entry.maxWeight, note: `${entry.repsAtMax} reps` })), { unit: "kg", singleNote: "Necesitas más sesiones para ver una evolución clara.", emptyText: "Todavía no hay datos suficientes para generar la gráfica." })}
-      <section class="card grid">
-        <h2>Historial</h2>
-        ${progress.entries.slice().reverse().map((entry) => `
-          <article class="history-item">
-            <h3>${formatDate(entry.date)}</h3>
-            <p>${escapeHTML(entry.dayName)}</p>
-            <div class="exercise-meta">
-              <span class="pill accent">Peso máximo: ${entry.maxWeight} kg</span>
-              <span class="pill">Reps con ese peso: ${entry.repsAtMax}</span>
-              <span class="pill">Series: ${entry.setCount}</span>
-            </div>
-          </article>
-        `).join("")}
-      </section>
     </section>
   `;
 }
@@ -1122,8 +1113,18 @@ function formatChartValue(value, unit = "") {
 }
 
 function setChartSlide(chartId, index) {
-  state.chartSlides[chartId] = Math.max(0, Math.min(1, index));
-  render();
+  const nextIndex = Math.max(0, Math.min(1, index));
+  state.chartSlides[chartId] = nextIndex;
+  document.querySelectorAll(".chart-carousel").forEach((carousel) => {
+    if (carousel.dataset.chartId !== chartId) return;
+    carousel.dataset.activeIndex = String(nextIndex);
+    const track = carousel.querySelector(".chart-track");
+    if (track) track.style.transform = `translateX(-${nextIndex * 100}%)`;
+    const card = carousel.closest(".chart-card");
+    card?.querySelectorAll(".chart-dot").forEach((dot, dotIndex) => {
+      dot.classList.toggle("active", dotIndex === nextIndex);
+    });
+  });
 }
 
 function renderProfile() {
@@ -1156,10 +1157,6 @@ function renderProfile() {
       </form>
     </section>
     ${renderBodyWeightChartSection()}
-    <section class="card grid history-secondary">
-      <h2>Historial de peso</h2>
-      ${state.data.bodyWeightHistory.length ? state.data.bodyWeightHistory.slice().reverse().map((item) => `<div class="set-row"><strong>${formatDate(item.date)}</strong><span>${item.weight} kg</span></div>`).join("") : renderInlineEmpty("Aún no has registrado tu peso corporal.")}
-    </section>
     <section class="card form-card">
       <h2>Zona de seguridad</h2>
       <p>Borra todos los días, ejercicios, entrenamientos, series, peso corporal y objetivo guardados en este navegador.</p>
@@ -1267,7 +1264,7 @@ function saveEditedSet(exerciseId, setIndex, formData) {
   renumberSets(exercise);
   state.editingSet = null;
   showToast("Serie actualizada.");
-  render();
+  renderPreservingScroll();
 }
 
 function renumberSets(exercise) {
@@ -1275,6 +1272,7 @@ function renumberSets(exercise) {
 }
 
 async function deleteWorkoutSet(exerciseId, setIndex) {
+  const scrollY = window.scrollY;
   const exercise = state.activeWorkout?.exercises.find((item) => item.exerciseId === exerciseId);
   const index = Number(setIndex);
   if (!exercise || !exercise.sets[index]) return showToast("No se encontró la serie.");
@@ -1284,7 +1282,7 @@ async function deleteWorkoutSet(exerciseId, setIndex) {
   renumberSets(exercise);
   state.editingSet = null;
   showToast("Serie eliminada.");
-  render();
+  renderPreservingScroll(scrollY);
 }
 
 function saveBodyWeight(formData) {
@@ -1355,8 +1353,8 @@ async function handleClick(event) {
   if (action === "open-exercise-logger") { state.activeExerciseId = target.dataset.exerciseId; return render(); }
   if (action === "back-to-workout") { state.activeExerciseId = null; state.editingSet = null; return render(); }
   if (action === "add-another-set") return document.querySelector("[name='weight']")?.focus();
-  if (action === "edit-set") { state.editingSet = { exerciseId: target.dataset.exerciseId, setIndex: Number(target.dataset.setIndex) }; return render(); }
-  if (action === "cancel-edit-set") { state.editingSet = null; return render(); }
+  if (action === "edit-set") { state.editingSet = { exerciseId: target.dataset.exerciseId, setIndex: Number(target.dataset.setIndex) }; return renderPreservingScroll(); }
+  if (action === "cancel-edit-set") { state.editingSet = null; return renderPreservingScroll(); }
   if (action === "delete-set") return deleteWorkoutSet(target.dataset.exerciseId, target.dataset.setIndex);
   if (action === "finish-workout") return finishWorkout();
   if (action === "cancel-workout") return cancelWorkout();

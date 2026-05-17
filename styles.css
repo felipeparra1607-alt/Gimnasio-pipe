@@ -656,9 +656,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   font-size: 0.88rem;
 }
 
-.history-secondary {
-  opacity: 0.88;
-}
 
 @media (min-width: 720px) {
   .chart-arrows {
